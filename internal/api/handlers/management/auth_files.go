@@ -679,6 +679,11 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth, quota authFileQu
 		"source":         "memory",
 		"size":           int64(0),
 	}
+	if strings.EqualFold(auth.Provider, "claude") {
+		entry["usage_buffer_supported"] = true
+		entry["usage_buffer_percent"], _ = coreauth.ParseUsageBufferPercent(auth.Metadata[coreauth.UsageBufferPercentKey])
+		entry["usage_buffer"] = coreauth.UsageBufferStatus(auth, time.Now())
+	}
 	entry["success"] = auth.Success
 	entry["failed"] = auth.Failed
 	entry["recent_requests"] = auth.RecentRequestsSnapshot(time.Now())

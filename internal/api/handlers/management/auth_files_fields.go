@@ -398,6 +398,14 @@ func applyAuthFileFieldsPatch(targetAuth *coreauth.Auth, req map[string]json.Raw
 				}
 			}
 		}
+		if rootAuthFileField(fieldPath) == coreauth.UsageBufferPercentKey {
+			if fieldPath != coreauth.UsageBufferPercentKey || !strings.EqualFold(targetAuth.Provider, "claude") {
+				return &authFileFieldPatchError{message: "usage buffers require a Claude credential and a scalar percentage"}
+			}
+			if _, errBuffer := coreauth.ParseUsageBufferPercent(value); errBuffer != nil {
+				return &authFileFieldPatchError{message: errBuffer.Error()}
+			}
+		}
 		if targetAuth.Metadata == nil {
 			targetAuth.Metadata = make(map[string]any)
 		}
