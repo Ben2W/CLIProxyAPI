@@ -136,6 +136,17 @@ func (h *Handler) APICall(c *gin.Context) {
 	authIndex := firstNonEmptyString(body.AuthIndexSnake, body.AuthIndexCamel, body.AuthIndexPascal)
 	auth := h.authByIndex(authIndex)
 
+	// Dashboard quota reads share the buffer monitor's cache and rate-limit backoff.
+	if c.GetBool(ConfigV8ContextKey) && h.authManager != nil && auth != nil &&
+		strings.EqualFold(auth.Provider, "claude") && method == http.MethodGet &&
+		urlStr == "https://api.anthropic.com/api/oauth/usage" && requestProxyURL == "" && body.Data == "" {
+		usageCtx, usageCancel := context.WithTimeout(c.Request.Context(), defaultAPICallTimeout)
+		defer usageCancel()
+		snapshot := h.authManager.ClaudeUsage(usageCtx, auth)
+		c.JSON(http.StatusOK, apiCallResponse{StatusCode: snapshot.StatusCode, Header: snapshot.Header, Body: snapshot.Body})
+		return
+	}
+
 	reqHeaders := body.Header
 	if reqHeaders == nil {
 		reqHeaders = map[string]string{}

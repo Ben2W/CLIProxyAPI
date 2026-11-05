@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -98,7 +99,9 @@ func TestUsageBufferMonitorPauseResumeAndFailure(t *testing.T) {
 	}{
 		{e.body, 200, true}, {`{"five_hour":{"utilization":0},"seven_day":{"utilization":1}}`, 200, false}, {`{}`, 429, true},
 	} {
+		m.claudeUsageCache = sync.Map{}
 		e.body, e.status = tc.body, tc.status
+		_, _, _ = m.Modify(ctx, a.ID, a.RegistrationEpoch, func(current *Auth) error { delete(current.Metadata, usageBufferStateKey); return nil })
 		m.refreshUsageBuffers(ctx)
 		got, _ := m.GetByID(a.ID)
 		if usageBufferBlocked(got, time.Now()) != tc.blocked {

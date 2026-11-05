@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -67,11 +66,6 @@ func UsageBufferStatus(auth *Auth, now time.Time) map[string]any {
 		result["reason"] = "usage_unavailable"
 		return result
 	}
-	checked, _ := state["checked_at"].(string)
-	at, err := time.Parse(time.RFC3339Nano, checked)
-	if err != nil || now.Sub(at) > 3*time.Minute || at.After(now.Add(time.Minute)) {
-		return result
-	}
 	seen := false
 	for _, key := range []string{"five_hour", "seven_day"} {
 		raw := state[key]
@@ -87,6 +81,11 @@ func UsageBufferStatus(auth *Auth, now time.Time) map[string]any {
 			result["reason"] = "reserve_reached"
 			return result
 		}
+	}
+	checked, _ := state["checked_at"].(string)
+	at, err := time.Parse(time.RFC3339Nano, checked)
+	if err != nil || now.Sub(at) > 3*time.Minute || at.After(now.Add(time.Minute)) {
+		return result
 	}
 	if seen {
 		result["paused"] = false
@@ -146,28 +145,11 @@ func (m *Manager) refreshUsageBuffers(ctx context.Context) {
 }
 
 func (m *Manager) fetchUsageBuffer(ctx context.Context, auth *Auth) (map[string]any, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.anthropic.com/api/oauth/usage", nil)
-	if err != nil {
-		return nil, err
+	snapshot := m.ClaudeUsage(ctx, auth)
+	if snapshot.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("usage HTTP %d", snapshot.StatusCode)
 	}
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
-	resp, err := m.HttpRequest(ctx, auth, req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if errClose := resp.Body.Close(); errClose != nil {
-			log.Debug("usage buffer: response close failed")
-		}
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("usage HTTP %d", resp.StatusCode)
-	}
-	var windows map[string]json.RawMessage
-	if errDecode := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&windows); errDecode != nil {
-		return nil, errDecode
-	}
-	return parseUsageBufferWindows(windows, time.Now())
+	return usageStateFromBody(snapshot.Body, snapshot.ObservedAt)
 }
 
 func parseUsageBufferWindows(windows map[string]json.RawMessage, now time.Time) (map[string]any, error) {

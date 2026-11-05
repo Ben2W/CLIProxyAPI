@@ -20,7 +20,12 @@ are accepted. The v8 credential list advertises `usage_buffer_supported`,
 
 The monitor runs inside the proxy and uses the credential's provider executor
 for authenticated, proxy-aware usage queries. It checks each configured account
-every minute. Missing, failed, or older-than-three-minute observations pause
+every minute, using a shared two-minute cache also consumed by dashboard quota
+refreshes. Accounts already at their reserve threshold wait until their limiting
+window resets instead of repeatedly polling. HTTP 429 responses honor Retry-After
+and use exponential backoff (five minutes initially). Last-known dashboard data
+remains visible with its original timestamp and a stale marker. Missing, failed,
+or older-than-three-minute observations below the threshold pause
 routing until a fresh measurement succeeds. Fresh measurements below the
 threshold restore routing automatically after a window resets. The ordinary
 manual disabled flag is independent and is never changed by the monitor.
